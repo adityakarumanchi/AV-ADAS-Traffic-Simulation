@@ -159,16 +159,16 @@ AQuickStartPawn::AQuickStartPawn()
 
 	ThrottleFactor = 1;
 	//RightGain = 0.01;
-	TickCounter = 0;
+	//TickCounter = 0;
 	TimeIdx = 0;
 
-	FinalVel = 3200;
-	RampSlope = 5;
+	/*FinalVel = 3200;
+	RampSlope = 5;*/
 
 	CurrentYaw = GetActorRotation().Yaw;
 	PreviousYaw = CurrentYaw;
 
-	TurnAngle = 90;
+	//TurnAngle = 90;
 	HeadingError = 0;
 	IntegralHeadingError = 0;
 	DerivativeHeadingError = 0;
@@ -274,30 +274,27 @@ void AQuickStartPawn::Tick(float Delta)
 		}
 	}
 
-	// Additional stuff	
-	//UE_LOG(LogTemp, Display, TEXT("%s"), *VehicleDataIn[TickCounter]);
+	// Additional stuff
 
-	// Velocity Control
-	if (TickCounter == 0)
+	// Vehicle Control
+	if (TimeIdx == 0)
 	{
-		//PreviousYaw = CurrentYaw;
-		//StartingFwdVector = GetActorForwardVector();
-		StartingAngle = GetActorRotation().Yaw;
-		//FinalDirection = StartingFwdVector.RotateAngleAxis(-TurnAngle, FVector(0, 0, 1));
-
+		StartingAngle = GetActorRotation().Yaw; // This variable is only for data-logging.
 	}
 	
+	// In the 'if' below, SUMoData[2] is the next desired speed (i.e. from the next SUMo time-step)
+	// and SUMoCurrVel is the desired speed from the previous time-step.
+	// For e.g. if Unreal is ticking from SUMo time 1.1 to 1.2 seconds, TimeIdx will be between 1.1 and 1.2, SUMoCurrTime is 1.1 seconds,
+	// SUMoCurrVel is the vehicle speed from 1.1 seconds, and SUMoData[2] is the vehicle speed at 1.2 seconds.
+	// TimeIdx is incremented at the end of this Tick function.
 	TArray<float> SUMoData = GetNextSUMoData(Delta);
 	if (SUMoData.Num() > 0)
 	{
-		//DesVel = (SUMoData[2] / ((SUMoData[0] - TimeIdx) / Delta)) * GetActorForwardVector(); // - GetVelocity().Size()
-		//DesVel = (SUMoCurrVel + ((SUMoData[2] - SUMoCurrVel) * ((SUMoCurrTime - TimeIdx)/Delta)) / (SUMoData[0] - SUMoCurrTime)) * GetActorForwardVector();
-		//DesVel = ((GetVelocity().Size() + SUMoData[2]) / 2)*GetActorForwardVector();
-		//DesVel = ((SUMoCurrVel + GetVelocity().Size() + SUMoData[2]) / 3)*GetActorForwardVector();
-		DesVel = SUMoData[2] * GetActorForwardVector();		
-		UE_LOG(LogTemp, Display, TEXT("SUMoVel.: %s, SUMoCurrVel: %s, Des Vel.: %s, SUMo time: %s, TimeIdx: %s"), *FString::SanitizeFloat(SUMoData[2]),
-			*FString::SanitizeFloat(SUMoCurrVel), *FString::SanitizeFloat(DesVel.Size()),
-			*FString::SanitizeFloat(SUMoData[0]), *FString::SanitizeFloat(TimeIdx));
+		DesVel = (SUMoCurrVel + ((SUMoData[2] - SUMoCurrVel) * (TimeIdx - SUMoCurrTime) / Delta)) * GetActorForwardVector();
+		/*UE_LOG(LogTemp, Display, TEXT("SUMoVel.: %s, SUMoCurrVel: %s, Des Vel.: %s, SUMOCurrTime: %s, SUMo time: %s, TimeIdx: %s"), *FString::SanitizeFloat(SUMoData[2]),
+			*FString::SanitizeFloat(SUMoCurrVel), *FString::SanitizeFloat(DesVel.Size()), *FString::SanitizeFloat(SUMoCurrTime), 
+			*FString::SanitizeFloat(SUMoData[0]), *FString::SanitizeFloat(TimeIdx));*/
+
 		DesAngle = SUMoData[1];
 		
 		// Not a general solution, applicable for this specific file. Need to implement properly based on SUMo to UE coordinate transform
@@ -307,14 +304,9 @@ void AQuickStartPawn::Tick(float Delta)
 		}
 	}
 
-	/*UE_LOG(LogTemp, Display, TEXT("DesAngle: %s, DesiredYaw: %s, CurrentYaw: %s"), *FString::SanitizeFloat(DesAngle),
-		*FString::SanitizeFloat(DesiredYaw), *FString::SanitizeFloat(CurrentYaw));*/
-	//UE_LOG(LogTemp, Display, TEXT("Current Quat: %s"), *GetActorQuat().ToString());
-		
-	//UE_LOG(LogTemp, Display, TEXT("DesVel: %s"), *DesVel.ToString());
 	SetDesiredVeloctiy(DesVel);
 	DriverModel(Delta);
-	DrawDebugPoint(GetWorld(), GetActorLocation(), 5, FColor::Purple, true, 0.03, 0);
+	DrawDebugPoint(GetWorld(), GetActorLocation(), 5, FColor::Purple, true, 0.03, 0); // Only for visualization.
 
 	/*if (TickCounter <= FinalVel/RampSlope)
 	{
@@ -358,7 +350,7 @@ void AQuickStartPawn::Tick(float Delta)
 		FString(TEXT("DError ")) + FString::SanitizeFloat(KDLat * DerivativeHeadingError));*/
 		
 	PreviousYaw = CurrentYaw;
-	TickCounter++;
+	//TickCounter++;
 	TimeIdx += Delta;
 }
 
@@ -390,11 +382,6 @@ TArray<float> AQuickStartPawn::GetNextSUMoData(float DeltaTime)
 		DataOut.Push(FCString::Atof(*FirstRow[7]));
 		DataOut.Push(100 * FCString::Atof(*FirstRow[8]));
 	}
-	//for (auto d : DataOut)//FirstRow)
-	//{
-	//	UE_LOG(LogTemp, Display, TEXT("%s"), *FString::SanitizeFloat(d));
-	//}
-	//UE_LOG(LogTemp, Display, TEXT("Done"));
 	
 	return DataOut;
 }
@@ -412,9 +399,9 @@ void AQuickStartPawn::DriverModel(float DeltaTime)
 	if (FGenericPlatformMath::Abs(ThrottleVal) < 1)
 	{
 		IntegratorError += VelocityError * DeltaTime; //Has to be multiplied by dt, coz integral error should be area under error curve, not just sum of error.
-		DerivativeError -= ProportionalError / DeltaTime;
 	}	
 	
+	DerivativeError -= ProportionalError / DeltaTime;
 	ProportionalError = VelocityError;
 		
 	TotalLongitudinalError = (KPLong / GainFactor) * ProportionalError + (KILong / GainFactor) * IntegratorError - (KDLong / GainFactor) * DerivativeError;
@@ -424,21 +411,14 @@ void AQuickStartPawn::DriverModel(float DeltaTime)
 		MoveForward(ThrottleVal);
 	}
 
-	/*if (SteeringVal<=1)
-		YawError += CurrentYaw - DesiredYaw;*/
-	//YawError = CurrentYaw - DesiredYaw;
-
-	//SteeringVal = KIYaw*YawError + KNonLinear*FGenericPlatformMath::Atan2(KLat*GetCrosstrackError(), KSoft + GetVelocity().Size())
-		//+ KDYaw * (GetYawRate(DeltaTime) - GetDesiredYawRate(DeltaTime));
-
-		DerivativeHeadingError -= HeadingError / DeltaTime;
-		HeadingError = CurrentYaw - DesiredYaw;
+	DerivativeHeadingError -= HeadingError / DeltaTime;
+	HeadingError = CurrentYaw - DesiredYaw;
 
 	if (FGenericPlatformMath::Abs(SteeringVal) < 1)
 	{
 		IntegralHeadingError += HeadingError * DeltaTime;
 	}
-	
+
 	SteeringVal = KPLat * HeadingError + KILat * IntegralHeadingError - KDLat * DerivativeHeadingError;
 
 	if (FGenericPlatformMath::Abs(SteeringVal) >= 0.001)

@@ -41,11 +41,13 @@ class AQuickStartPawn : public AWheeledVehicle
 	UPROPERTY(Category = Display, VisibleDefaultsOnly, BlueprintReadOnly, meta = (AllowPrivateAccess = "true"))
 	UTextRenderComponent* InCarGear;
 		
-	uint32 TickCounter;
+	//uint32 TickCounter;
 	float TimeIdx;
 	float VelocityError;
 	float SUMoCurrVel;
 	float SUMoCurrTime;
+	float SUMoCurrAngle;
+	FVector DesVel;
 
 	FRotator VehicleRotation;
 	float DesAngle;
@@ -53,27 +55,28 @@ class AQuickStartPawn : public AWheeledVehicle
 	float CurrentYaw;
 	float DesiredYaw;
 
-	float IntegratorError;
-	float ProportionalError;
-	float DerivativeError;
+	float VelIntegralError;
+	float VelProportionalError;
+	float VelDerivativeError;
 	float TotalLongitudinalError;
 	float GainFactor;
 
-	float RightGain;
-
+	float HeadingError;
+	float HeadingProportionalError;
+	float HeadingIntegralError;
+	float HeadingDerivativeError;
+	
 	float ThrottleVal;
 	float SteeringVal;
 
-	float const EarthRadius = 6367.5*1000*100; // in centimeters
+	//float const EarthRadius = 6367.5*1000*100; // in centimeters
 
 	void DriverModel(float DeltaTime);
-	/*PIDController* PIDLat;
-	PIDController* PIDLong;*/
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	TArray<float> GetNextSUMoData(float DeltaTime);
 	//float GetYawRate(float DeltaTime);
 	//float GetDesiredYawRate(float DeltaTime);
 	//float GetCrosstrackError();
-	TArray<float> GetNextSUMoData(float DeltaTime);
 
 	TArray<FString> VehicleDataOut;
 	TArray<FString> VehicleDataIn;
@@ -81,17 +84,11 @@ class AQuickStartPawn : public AWheeledVehicle
 	//FVector DesiredPosition;
 	//FVector NextDesiredPosition;
 	//FVector PositionError;
-	FVector DesVel;
-	float YawError;
+	//float YawError;
 
 	//FVector StartingFwdVector;
-	float StartingAngle;
+	//float StartingAngle;
 
-	float HeadingError;
-	float IntegralHeadingError;
-	float DerivativeHeadingError;
-
-	FVector FinalDirection;	
 
 public:
 	AQuickStartPawn();
@@ -133,33 +130,33 @@ public:
 	void SetDesiredVeloctiy(FVector DesiredVelocity);
 
 	UPROPERTY(EditAnywhere)
-	float KPLong;
+	float KPLong = 2;
 	
 	UPROPERTY(EditAnywhere)
-	float KILong;
+	float KILong = 0.1;
 	
 	UPROPERTY(EditAnywhere)
-	float KDLong;
+	float KDLong = 0.001;
 
 	UPROPERTY(EditAnywhere)
-	float ThrottleFactor;
+	float ThrottleFactor = 1;
 	
 	UPROPERTY(EditAnywhere)
-	float KPLat;
+	float KPLat = 0.05;
+
+	UPROPERTY(EditAnywhere)
+	float KILat = 0.001;
+
+	UPROPERTY(EditAnywhere)
+	float KDLat = 0;
 
 	/*UPROPERTY(EditAnywhere)
 	float KSoft;*/
 
-	UPROPERTY(EditAnywhere)
-	float KILat;
-
-	UPROPERTY(EditAnywhere)
-	float KDLat;
-
 	/*UPROPERTY(EditAnywhere)
 	float KNonLinear;*/
 
-	UPROPERTY(EditAnywhere)
+	/*UPROPERTY(EditAnywhere)
 	float FinalVel;
 
 	UPROPERTY(EditAnywhere)
@@ -172,7 +169,7 @@ public:
 	uint32 TurnStart = 400;
 
 	UPROPERTY(EditAnywhere)
-	uint32 TurnDuration = 300;
+	uint32 TurnDuration = 300;*/
 
 protected:
 	virtual void BeginPlay() override;

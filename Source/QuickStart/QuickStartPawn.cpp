@@ -138,40 +138,42 @@ AQuickStartPawn::AQuickStartPawn()
 	}
 	VehicleDataIn.RemoveAt(0); // To remove header with column labels
 
+	TimeIdx = 0;
 	SUMoCurrVel = 0;
 	SUMoCurrTime = 0;
+	SUMoCurrAngle = 0;
 
-	IntegratorError = 0;
-	ProportionalError = 0;
-	DerivativeError = 0;
+	VelIntegralError = 0;
+	VelProportionalError = 0;
+	VelDerivativeError = 0;
 	TotalLongitudinalError = 0;
-	YawError = 0;
+	//YawError = 0;
 
-	KPLong = 2;
+	/*KPLong = 2;
 	KILong = 0.1;
 	KDLong = 0.001;
 
 	KPLat = 0.05;
-	//KSoft = 1;
 	KILat = 0.001;
-	KDLat = 0;
+	KDLat = 0;*/
 	//KNonLinear = 1;
+	//KSoft = 1;
 
-	ThrottleFactor = 1;
+	//ThrottleFactor = 1;
 	//RightGain = 0.01;
 	//TickCounter = 0;
-	TimeIdx = 0;
 
 	/*FinalVel = 3200;
 	RampSlope = 5;*/
+	//TurnAngle = 90;
 
 	CurrentYaw = GetActorRotation().Yaw;
 	PreviousYaw = CurrentYaw;
 
-	//TurnAngle = 90;
 	HeadingError = 0;
-	IntegralHeadingError = 0;
-	DerivativeHeadingError = 0;
+	HeadingProportionalError = 0;
+	HeadingIntegralError = 0;
+	HeadingDerivativeError = 0;
 }
 
 void AQuickStartPawn::SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent)
@@ -277,10 +279,10 @@ void AQuickStartPawn::Tick(float Delta)
 	// Additional stuff
 
 	// Vehicle Control
-	if (TimeIdx == 0)
-	{
-		StartingAngle = GetActorRotation().Yaw; // This variable is only for data-logging.
-	}
+	//if (TimeIdx == 0)
+	//{
+	//	StartingAngle = GetActorRotation().Yaw; // This variable is only for data-logging.
+	//}
 	
 	// In the 'if' below, SUMoData[2] is the next desired speed (i.e. from the next SUMo time-step)
 	// and SUMoCurrVel is the desired speed from the previous time-step.
@@ -291,18 +293,18 @@ void AQuickStartPawn::Tick(float Delta)
 	if (SUMoData.Num() > 0)
 	{
 		DesVel = (SUMoCurrVel + ((SUMoData[2] - SUMoCurrVel) * (TimeIdx - SUMoCurrTime) / Delta)) * GetActorForwardVector();
-		/*UE_LOG(LogTemp, Display, TEXT("SUMoVel.: %s, SUMoCurrVel: %s, Des Vel.: %s, SUMOCurrTime: %s, SUMo time: %s, TimeIdx: %s"), *FString::SanitizeFloat(SUMoData[2]),
-			*FString::SanitizeFloat(SUMoCurrVel), *FString::SanitizeFloat(DesVel.Size()), *FString::SanitizeFloat(SUMoCurrTime), 
-			*FString::SanitizeFloat(SUMoData[0]), *FString::SanitizeFloat(TimeIdx));*/
-
-		DesAngle = SUMoData[1];
-		
+		DesAngle = (SUMoCurrAngle + ((SUMoData[1] - SUMoCurrAngle) * (TimeIdx - SUMoCurrTime) / Delta));
+		//DesAngle = SUMoData[1];
+		//DesAngle = 360 - DesAngle;
+		//DesAngle = FGenericPlatformMath::Fmod(SUMoData[1], 180);
 		// Not a general solution, applicable for this specific file. Need to implement properly based on SUMo to UE coordinate transform
-		if (DesAngle != 0)
+		/*if (DesAngle != 0)
 		{
-			DesAngle -= 360;
-		}
+			DesAngle = 360 - DesAngle;
+		}*/
 	}
+	//DesiredYaw = FGenericPlatformMath::Fmod(StartingAngle - DesAngle, -180);
+	DesiredYaw = FGenericPlatformMath::Fmod(DesAngle-450, -360);
 
 	SetDesiredVeloctiy(DesVel);
 	DriverModel(Delta);
@@ -319,7 +321,30 @@ void AQuickStartPawn::Tick(float Delta)
 
 	// Turning Control
 	CurrentYaw = GetActorRotation().Yaw;
-	DesiredYaw = StartingAngle - DesAngle;
+	UE_LOG(LogTemp, Display, TEXT("CurrentYaw: %s, DesiredYaw: %s"),
+		*FString::SanitizeFloat(CurrentYaw), *FString::SanitizeFloat(DesiredYaw));
+	
+	// For the special case of angle around -180/180 degrees
+	if (DesiredYaw < -175 || DesiredYaw > 175)
+	{
+		UE_LOG(LogTemp, Display, TEXT("Special case, CurrentYaw: %s, DesiredYaw: %s, CurrentYaw*DesiredYaw: %s"),
+			*FString::SanitizeFloat(CurrentYaw), *FString::SanitizeFloat(DesiredYaw), *FString::SanitizeFloat(CurrentYaw*DesiredYaw));
+
+		if (CurrentYaw*DesiredYaw < 0)
+		{
+			if (DesiredYaw < 0) // Because of the second condition in the above 'if', this means CurrentYaw > 180
+				CurrentYaw -= 360;
+			else // Because of the second condition in the outer 'if', this means CurrentYaw < -180
+				CurrentYaw += 360;
+
+			UE_LOG(LogTemp, Display, TEXT("After conditioning, CurrentYaw: %s, DesiredYaw: %s"),
+				*FString::SanitizeFloat(CurrentYaw), *FString::SanitizeFloat(DesiredYaw));
+		}
+	}
+	//else // normal case
+	//{
+	//}
+
 	
 	//if (TickCounter <= TurnStart)
 	//{
@@ -336,18 +361,18 @@ void AQuickStartPawn::Tick(float Delta)
 	//	//NextDesiredPosition = GetActorLocation() + DesVel * Delta * 2;		
 	//}
 	
-	VehicleDataOut.Add(FString(TEXT("Time ")) + FString::SanitizeFloat(TimeIdx) + FString(TEXT(";")) +
-		FString(TEXT("Ref ")) + FString::SanitizeFloat(DesVel.Size()) + FString(TEXT(";")) +
-		FString(TEXT("CurrVel ")) + FString::SanitizeFloat(GetVelocity().Size()) + FString(TEXT(";")) +
-		FString(TEXT("VelErr ")) + FString::SanitizeFloat(VelocityError) + FString(TEXT(";")) +
-		FString(TEXT("Throttle ")) + FString::SanitizeFloat(ThrottleVal) + FString(TEXT(";")) +
-		FString(TEXT("Steering ")) + FString::SanitizeFloat(SteeringVal) + FString(TEXT(";")) +
-		FString(TEXT("Yaw ")) + FString::SanitizeFloat(CurrentYaw - PreviousYaw) + FString(TEXT(";")) +
-		FString(TEXT("CurrAngle ")) + FString::SanitizeFloat(GetActorRotation().Yaw) + FString(TEXT(";")) +
-		FString(TEXT("Quat ")) + GetActorQuat().ToString());
-		/*FString(TEXT("PError ")) + FString::SanitizeFloat(KPLat * HeadingError) + FString(TEXT(";")) +
-		FString(TEXT("IError ")) + FString::SanitizeFloat(KILat * IntegralHeadingError) + FString(TEXT(";")) +
-		FString(TEXT("DError ")) + FString::SanitizeFloat(KDLat * DerivativeHeadingError));*/
+	VehicleDataOut.Add(FString(TEXT("Time ")) + FString::SanitizeFloat(TimeIdx)
+		+ FString(TEXT(";")) + FString(TEXT("Ref ")) + FString::SanitizeFloat(DesVel.Size())
+		+ FString(TEXT(";")) + FString(TEXT("CurrVel ")) + FString::SanitizeFloat(GetVelocity().Size())
+		+ FString(TEXT(";")) + FString(TEXT("VelErr ")) + FString::SanitizeFloat(VelocityError)
+		+ FString(TEXT(";")) + FString(TEXT("Throttle ")) + FString::SanitizeFloat(ThrottleVal)
+		+ FString(TEXT(";")) + FString(TEXT("Steering ")) + FString::SanitizeFloat(SteeringVal)
+		+ FString(TEXT(";")) + FString(TEXT("DesiredHeadingAngle ")) + FString::SanitizeFloat(DesiredYaw)
+		+ FString(TEXT(";")) + FString(TEXT("CurrHeadingAngle ")) + FString::SanitizeFloat(GetActorRotation().Yaw)
+		+ FString(TEXT(";")) + FString(TEXT("PError ")) + FString::SanitizeFloat(KPLat * HeadingProportionalError)
+		/* + FString(TEXT(";")) + FString(TEXT("PError ")) + FString::SanitizeFloat(KPLat * HeadingError)*/
+		+ FString(TEXT(";")) + FString(TEXT("IError ")) + FString::SanitizeFloat(KILat * HeadingIntegralError)
+		+ FString(TEXT(";")) + FString(TEXT("DError ")) + FString::SanitizeFloat(KDLat * HeadingDerivativeError));
 		
 	PreviousYaw = CurrentYaw;
 	//TickCounter++;
@@ -371,13 +396,13 @@ TArray<float> AQuickStartPawn::GetNextSUMoData(float DeltaTime)
 	if (TimeIdx + DeltaTime >= FCString::Atof(*FirstRow[1]))
 	{
 		SUMoCurrVel = 100 * FCString::Atof(*FirstRow[8]);
+		SUMoCurrAngle = FCString::Atof(*FirstRow[7]);
 		SUMoCurrTime = FCString::Atof(*FirstRow[1]);
 		VehicleDataIn.RemoveAt(0);
 	}
 	else
 	{
-		// [1] is SUMo time, [7] is angle, [8] is speed. Factor of 100 to convert from m/s to cm/s
-		//DataOut.Init(FCString::Atof(*FirstRow[1]), FCString::Atof(*FirstRow[7]), (100 * FCString::Atof(*FirstRow[8])));
+		// [1] is SUMo time, [7] is angle, [8] is speed. Factor of 100 to convert from m/s to cm/s		
 		DataOut.Push(FCString::Atof(*FirstRow[1]));
 		DataOut.Push(FCString::Atof(*FirstRow[7]));
 		DataOut.Push(100 * FCString::Atof(*FirstRow[8]));
@@ -394,35 +419,38 @@ void AQuickStartPawn::SetDesiredVeloctiy(FVector DesiredVelocity)
 }
 
 void AQuickStartPawn::DriverModel(float DeltaTime)
-{	
-	//if (FGenericPlatformMath::Abs(TotalLongitudinalError)*ThrottleFactor < 1)
+{
+	// Velocity control
 	if (FGenericPlatformMath::Abs(ThrottleVal) < 1)
 	{
-		IntegratorError += VelocityError * DeltaTime; //Has to be multiplied by dt, coz integral error should be area under error curve, not just sum of error.
+		VelIntegralError += VelocityError * DeltaTime; //Has to be multiplied by dt, coz integral error should be area under error curve, not just sum of error.
 	}	
 	
-	DerivativeError -= ProportionalError / DeltaTime;
-	ProportionalError = VelocityError;
+	VelDerivativeError -= VelProportionalError / DeltaTime;
+	VelProportionalError = VelocityError;
 		
-	TotalLongitudinalError = (KPLong / GainFactor) * ProportionalError + (KILong / GainFactor) * IntegratorError - (KDLong / GainFactor) * DerivativeError;
+	TotalLongitudinalError = (KPLong / GainFactor) * VelProportionalError + (KILong / GainFactor) * VelIntegralError - (KDLong / GainFactor) * VelDerivativeError;
 	ThrottleVal = ThrottleFactor * TotalLongitudinalError;
 	if (FGenericPlatformMath::Abs(VelocityError) > 25)
 	{
 		MoveForward(ThrottleVal);
-	}
+	}	
 
-	DerivativeHeadingError -= HeadingError / DeltaTime;
-	HeadingError = CurrentYaw - DesiredYaw;
+	// Steering control
+	HeadingError = DesiredYaw - CurrentYaw;
+	HeadingDerivativeError -= HeadingProportionalError / DeltaTime;
+	HeadingProportionalError = HeadingError; // FGenericPlatformMath::Atan(HeadingError);
+	//HeadingError = CurrentYaw - DesiredYaw;
 
 	if (FGenericPlatformMath::Abs(SteeringVal) < 1)
 	{
-		IntegralHeadingError += HeadingError * DeltaTime;
+		HeadingIntegralError += HeadingProportionalError * DeltaTime;
 	}
 
-	SteeringVal = KPLat * HeadingError + KILat * IntegralHeadingError - KDLat * DerivativeHeadingError;
+	SteeringVal = KPLat * HeadingProportionalError + KILat * HeadingIntegralError - KDLat * HeadingDerivativeError;
 
 	if (FGenericPlatformMath::Abs(SteeringVal) >= 0.001)
-		MoveRight(-SteeringVal);
+		MoveRight(SteeringVal);
 	else
 		MoveRight(0);
 }
